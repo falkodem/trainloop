@@ -1,0 +1,5 @@
+1. Добавить аугментации
+2. Добавить лоссы
+3. WarmUp и Scheduler Timm
+4. Еще стратегии обучения
+    1. Masked Image Modelling (как fully convolutional masked autoencoder framework в convnext_v2) претрейн
