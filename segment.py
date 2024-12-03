@@ -9,6 +9,7 @@ from torchvision.transforms.functional import to_tensor
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
+import albumentations as A
 
 from TrainLoop.trainer import Trainer
 from archs.unet import UNetConvNext
@@ -20,6 +21,13 @@ from TrainLoop.loss import DiceLoss
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print('Device:',device)
 convnext = timm.create_model('convnextv2_femto', checkpoint_path = './models/convnextv2_femto.safetensors')
+
+augmentations = A.Compose([
+    A.RandomCrop(width=512, height=512),
+    A.HorizontalFlip(p=0.5),
+    A.RandomBrightnessContrast(p=0.2),
+])
+
 size = (768,768)
 preprocessor = ConvNextPreprocessor(size, use_imagenet_norm=False)
 
@@ -36,8 +44,6 @@ dl_val = DataLoader(ds_val, batch_size=8, shuffle=False, num_workers=4)
 id2label = {v['id']: v['name'] for _,v in ds_train.coco_dataset.cats.items()}
 id2label[0] = 'фон'
 label2id = {name: id_ for id_, name in id2label.items()}
-label2id
-
 
 n_epochs = 40
 

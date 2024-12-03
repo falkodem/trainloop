@@ -7,6 +7,8 @@ import numpy as np
 import torch
 import PIL
 from PIL import Image
+import albumentations as A
+import torchvision.transforms.v2 as v2
 
 np_dtype = np.float16
 torch_dtype = torch.float16
@@ -53,6 +55,10 @@ class SemanticSegmentationCOCODataset(Dataset):
     
 
 class ConvNextPreprocessorNumpy:
+    '''
+    Similar to the ConvNextPreprocess but all operations are on Numpy.
+    It's actuallt 2-3 times slower, than ConvNextPreprocess, which uses torch and numpy for augmentations
+    '''
     def __init__(self, size, aug=None, use_imagenet_norm=True):
         self.aug = aug
         self.size = size
@@ -70,7 +76,8 @@ class ConvNextPreprocessorNumpy:
 
         img = self._preprocess_image(img)
         mask = self._preprocess_mask(mask)
-        return img, mask
+        transformed = self.aug(image=img.transpose(1,2,0), mask=mask)
+        return transformed['image'].transpose(2,0,1), transformed['mask']
         
     def _preprocess_image(self, img):
         img = img.resize(self.size, resample=PIL.Image.Resampling.BILINEAR)
@@ -90,20 +97,19 @@ class ConvNextPreprocessorNumpy:
     @staticmethod
     def _get_std(x: np.ndarray):
         return np.std(x, axis=(1,2)).reshape(3,1,1)
-    
-    @staticmethod
-    def _validate_img(img: PIL.Image):
-        # Need testing. For now this handles png and single-channel images
-        if img.format != "JPEG":
-            img = img.convert('RGB')
-        return img
 
 
 class ConvNextPreprocessor:
-    def __init__(self, size, aug=None, use_imagenet_norm=True):
-        self.aug = aug
+    def __init__(self, size, augmentator=None, use_imagenet_norm=True):
+        self.augmentator = augmentator
+        if isinstance(self.augmentator, A.Compose):
+            self.aug_backend = 'numpy'
+        elif isinstance(self.augmentator, v2.Compose):
+            self.aug_backend = 'torch'
+        else:
+            self.aug_backend = 'unspec'
         self.size = size
-        # \_(^_^)_|
+        # ¯\_(ツ)_/¯
         if use_imagenet_norm:
             self.mean = np.array(IMAGENET_MEAN).reshape(3,1,1)
             self.std = np.array(IMAGENET_STD).reshape(3,1,1)
@@ -116,8 +122,18 @@ class ConvNextPreprocessor:
     def __call__(self, img: PIL.Image, mask: np.ndarray):
         img = self._preprocess_image(img)
         mask = self._preprocess_mask(mask)
+        img, mask = self.augment(img, mask)
         return img, mask
         
+    def augment(self, img: torch.tensor, mask: torch.tensor):
+        if self.aug_backend == 'numpy':
+            transformed = self.augmentator(image=img.permute(1,2,0).numpy(), mask=mask.numpy())
+            img, mask = transformed['image'].transpose(2,0,1), transformed['mask']
+        else:
+            transformed = self.augmentator(image=img, mask=mask.numpy())
+            img, mask = transformed['image'], transformed['mask']
+        return img, mask
+    
     def _preprocess_image(self, img):
         img = T.functional.to_tensor(img).unsqueeze(0)
         img = T.functional.resize(img, size=self.size, interpolation=T.InterpolationMode.BILINEAR, antialias=True).squeeze()
