@@ -13,6 +13,7 @@ import albumentations as A
 
 from TrainLoop.trainer import Trainer
 from archs.unet import UNetConvNext
+from archs.convnext_seg import ConvNextSeg
 from TrainLoop.data import SemanticSegmentationCOCODataset, ConvNextPreprocessor, ConvNextPreprocessorNumpy
 from TrainLoop.utils import one_hot_labels
 from TrainLoop.metrics import MeanIOU
@@ -47,9 +48,10 @@ label2id = {name: id_ for id_, name in id2label.items()}
 
 n_epochs = 40
 
-unet = UNetConvNext(convnext, n_classes=len(label2id))
-optimizer = torch.optim.AdamW(unet.parameters(), lr=3e-4)
-scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9)
+# model = UNetConvNext(convnext, n_classes=len(label2id))
+model = ConvNextSeg(convnext, n_classes=len(label2id))
+optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
+scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
 
 def ce_loss(preds, labels):
     labels = labels.unsqueeze(1)
@@ -93,7 +95,7 @@ def compute_iou_callback(**state):
     with open(os.path.join(state['save_dir'],'metrics.log'), 'a') as f:
             f.write(json.dumps(res, ensure_ascii=False) + '\n')
 
-trainer = Trainer(model=unet,
+trainer = Trainer(model=model,
         save_dir='run/base_dice_noBack',
         loss_fn=dice_loss,
         optimizer=optimizer,
