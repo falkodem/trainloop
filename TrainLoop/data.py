@@ -101,7 +101,12 @@ class ConvNextPreprocessorNumpy:
 
 class ConvNextPreprocessor:
     def __init__(self, size, augmentator=None, use_imagenet_norm=True):
-        self.augmentator = augmentator
+        def blank_aug(image, mask): return {'image': image, 'mask': mask}
+        
+        if augmentator is not None:
+            self.augmentator = augmentator
+        else:
+            self.augmentator = blank_aug
         if isinstance(self.augmentator, A.Compose):
             self.aug_backend = 'numpy'
         elif isinstance(self.augmentator, v2.Compose):
@@ -130,7 +135,7 @@ class ConvNextPreprocessor:
             transformed = self.augmentator(image=img.permute(1,2,0).numpy(), mask=mask.numpy())
             img, mask = transformed['image'].transpose(2,0,1), transformed['mask']
         else:
-            transformed = self.augmentator(image=img, mask=mask.numpy())
+            transformed = self.augmentator(image=img, mask=mask)
             img, mask = transformed['image'], transformed['mask']
         return img, mask
     
