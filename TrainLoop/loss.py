@@ -1,3 +1,5 @@
+from typing import Union
+
 import torch
 import torch.nn.functional as F
 
@@ -51,10 +53,10 @@ class DiceLoss(torch.nn.Module):
         include_background: bool = True,
         squared_pred: bool = False,
         jaccard: bool = False,
-        reduction: None | str = 'mean',
+        reduction: Union[str, None] = 'mean',
         smooth_nr: float = 1e-5,
         smooth_dr: float = 1e-5,
-        weight: float | int | torch.Tensor | None = None,
+        weight: Union[float, int, torch.Tensor, None] = None,
     ) -> None:
         """
         Args:
@@ -93,7 +95,7 @@ class DiceLoss(torch.nn.Module):
         self.jaccard = jaccard
         self.smooth_nr = float(smooth_nr)
         self.smooth_dr = float(smooth_dr)
-        self.class_weight: None | torch.Tensor = torch.as_tensor(weight) if weight is not None else None
+        self.class_weight: Union[None, torch.Tensor] = torch.as_tensor(weight) if weight is not None else None
         self.reduction = reduction
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
