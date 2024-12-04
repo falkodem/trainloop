@@ -1,2 +1,3 @@
-4. Еще стратегии обучения
+1. Еще стратегии обучения
     1. Masked Image Modelling (как fully convolutional masked autoencoder framework в convnext_v2) претрейн
+2. Добавить загрузку через state_dict
