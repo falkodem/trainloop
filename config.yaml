@@ -1,0 +1,55 @@
+run_name: 'test_new_preds_focal_woutback'
+seg_model_type: 'UNetConvNext'
+convnext_model: 'convnextv2_femto'
+convnext_model_path: './models/convnextv2_femto.safetensors'
+aug:
+    crop_size:
+    - 600
+    - 600
+    rotate:
+        angles:
+        - -30
+        - 30
+    brightness_contrast:
+        p: 0.2
+    perspective:
+        scale:
+        - 0.003
+        - 0.003
+preprocessor:
+    size:
+    - 768
+    - 768
+    use_imagenet_norm: True
+dataset:
+    batch_size: 6
+    workers: 4
+train:
+    n_epochs: 100
+    early_stop_rounds: 10
+    eval_strat: 'epoch'
+    save_only_best: True
+    optimizer:
+        name: 'AdamW'
+        params:
+            lr: 0.0003
+    scheduler:
+        name: 'ExponentialLR'
+        params:
+          gamma: 0.95
+    loss:
+        dice:
+            include_background: False
+            squared_pred: False
+            jaccard: False
+            reduction: 'mean'
+            # weight:
+                # - 0.01
+                # - 1
+                # - 1
+                # - 1
+                # - 1
+                # - 1
+                # - 1
+                # - 1
+                # - 1

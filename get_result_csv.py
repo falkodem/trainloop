@@ -3,7 +3,7 @@ import json
 
 import pandas as pd
 
-runs = [os.path.join('run', f) for f in os.listdir('run')]
+runs = [os.path.join('runs', f) for f in os.listdir('runs')]
 
 data = []
 index = []

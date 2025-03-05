@@ -26,10 +26,11 @@ class Trainer:
                 eval_strat: str = 'epoch',
                 loss_lesser_is_better: bool = True,
                 save_only_best: bool = False,
-                accumulate_metric_callbacks: List[Callable] = [],
-                compute_metric_callbacks: List[Callable] = [],
+                on_batch_validation_callbacks: List[Callable] = [],
+                end_of_iter_callbacks: List[Callable] = [],
                 ):
-        self.model = model
+        self.device = device
+        self.model = model.to(self.device)
         self.loss_fn = loss_fn
         self.optimizer = optimizer
         self.scheduler = scheduler
@@ -49,25 +50,31 @@ class Trainer:
             raise AttributeError('Parameter "eval_strat" should be either "epoch" or "steps"')
             
         self.save_dir = save_dir
-        self.device = device
         self.early_stop_rounds = early_stop_rounds
         self.eval_strat = eval_strat
         self.loss_lesser_is_better = loss_lesser_is_better
         self.save_only_best = save_only_best
-        self.accumulate_metric_callbacks = accumulate_metric_callbacks
-        self.compute_metric_callbacks = compute_metric_callbacks
-        
-        self.model = self.model.to(self.device)
-        
-        self.curr_iter = 0
-        
-    def _epoch_train_loop(self, dl_train: torch.utils.data.DataLoader, dl_val: torch.utils.data.DataLoader):
-        os.makedirs(self.save_dir, exist_ok=True)
+        self.on_batch_validation_callbacks = on_batch_validation_callbacks
+        self.end_of_iter_callbacks = end_of_iter_callbacks
         
         self.train_hist = []
         self.val_hist = []
+        self.lr_hist = []
+        self.curr_iter = 0
+        
+        self.end_of_iter_allowed_properties = {'save_dir': self.save_dir,
+                                               'curr_iter': self.curr_iter,
+                                               'train_hist': self.train_hist,
+                                               'val_hist': self.val_hist,
+                                               'lr_hist': self.lr_hist,
+                                               'eval_strat': self.eval_strat}
+
+
+        
+    def _epoch_train_loop(self, dl_train: torch.utils.data.DataLoader, dl_val: torch.utils.data.DataLoader):
+        os.makedirs(self.save_dir, exist_ok=True)
         best_val_loss = {'time': f'{self.iter_name}_0_batch_0', 'value': np.inf}
-        lr_scheduled = []
+        
 
         self.early_stop_cnt = 0
         
@@ -79,7 +86,6 @@ class Trainer:
                     for idx_batch, (X_train, y_train) in enumerate(dl_train):
                         self.optimizer.zero_grad()
                         X_train, y_train = X_train.to(self.device), y_train.to(self.device)
-
                         self.model.train()
                         pred = self.model(X_train)
                         loss = self.loss_fn(pred, y_train)
@@ -95,13 +101,12 @@ class Trainer:
                     best_val_loss = self.process_end_of_iter(train_hist_iter,
                                                                              dl_val,
                                                                              best_val_loss,
-                                                                             lr_scheduled,
                                                                              iteration,
                                                                              idx_batch)
                     if self.early_stop_cnt >= self.early_stop_rounds:
                         # Add early_stopping callback
                         # self.es_callback()
-                        print(f'Finished. Done {iteration} {self.iter_name}s. Best model learned at {best_val_loss["time"]}')
+                        logger.info(f'Finished. Done {iteration} {self.iter_name}s. Best model learned at {best_val_loss["time"]}')
                         return self.train_hist, self.val_hist
 
                 pbar.update(1)
@@ -110,11 +115,8 @@ class Trainer:
     
     def _steps_train_loop(self,  dl_train: torch.utils.data.DataLoader, dl_val: torch.utils.data.DataLoader):
         os.makedirs(self.save_dir, exist_ok=True)
-        
-        self.train_hist = []
-        self.val_hist = []
         best_val_loss = {'time': f'{self.iter_name}_0_batch_0', 'value': np.inf}
-        lr_scheduled = []
+        
 
         self.early_stop_cnt = 0
         
@@ -140,7 +142,6 @@ class Trainer:
                         best_val_loss = self.process_end_of_iter(train_hist_iter,
                                                                      dl_val,
                                                                      best_val_loss,
-                                                                     lr_scheduled,
                                                                      iteration,
                                                                      idx_batch)
                         train_hist_iter = []
@@ -162,23 +163,20 @@ class Trainer:
             self._steps_train_loop(dl_train, dl_val)
             
 
-    def process_end_of_iter(self, train_hist_iter, dl_val, best_val_loss, lr_scheduled, iteration, idx_batch):
+    def process_end_of_iter(self, train_hist_iter, dl_val, best_val_loss, iteration, idx_batch):
         self.train_hist.append(sum(train_hist_iter) / len(train_hist_iter))
 
         val_loss = self.validate(dl_val)
-        self.val_hist.append(val_loss)
-
-        for cb in self.compute_metric_callbacks:
-            cb(save_dir=self.save_dir,
-                curr_iter=self.curr_iter,
-                train_loss=self.train_hist[-1],
-                val_loss=self.val_hist[-1])  
+        self.val_hist.append(val_loss) 
 
         best_val_loss = self.check_for_best_model(best_val_loss, val_loss, iteration, idx_batch)
-
-        self.scheduler.step()
-        lr_scheduled.append(self.scheduler.get_last_lr())
         
+        if self.scheduler is not None:
+            self.scheduler.step()
+            self.lr_hist.append(self.scheduler.get_last_lr())
+        for cb in self.end_of_iter_callbacks:
+            cb(**self.end_of_iter_allowed_properties)
+            
         return best_val_loss
 
     
@@ -193,7 +191,7 @@ class Trainer:
                 
                 loss = self.loss_fn(pred, y_val)
                 
-                for cb in self.accumulate_metric_callbacks:
+                for cb in self.on_batch_validation_callbacks:
                     cb(pred, y_val)
                 
                 val_hist_batch.append(loss.item())

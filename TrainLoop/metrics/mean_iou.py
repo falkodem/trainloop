@@ -185,7 +185,7 @@ class MeanIOU:
         self.total_area_intersect += total_area_intersect 
         self.total_area_union += total_area_union 
         self.total_area_pred_label += total_area_pred_label 
-        self.total_area_label += total_area_label 
+        self.total_area_label += total_area_label
         if self.mode == 'at_once':
             return self.get_results()
 

@@ -18,14 +18,14 @@ IMAGENET_STD = [0.229, 0.224, 0.225]
 class SemanticSegmentationCOCODataset(Dataset):
     """Image (semantic) segmentation dataset.
     Draws data from COCO-style dataset
-    Images and annotations should be places in the same direcotry with name specified by "root_dir" parameter
-    Annotation file (in COCO json format) name is specified by "ann_file_name" parameter
+    Images and annotations should be places in the same direcotry with name specified by "img_dir" parameter
+    Annotation file (in COCO json format) name is specified by "ann_file_path" parameter
     """
 
-    def __init__(self, root_dir, ann_file_name, preprocessor):
-        self.root_dir = root_dir
+    def __init__(self, img_dir, ann_file_path, preprocessor):
+        self.img_dir = img_dir
         self.preprocessor = preprocessor
-        self.coco_dataset = COCO(os.path.join(root_dir, ann_file_name))
+        self.coco_dataset = COCO(ann_file_path)
         self.cat_ids = self.coco_dataset.getCatIds()
         self.idx_mapper = {raw_idx:coco_idx for raw_idx, coco_idx in enumerate(sorted(self.coco_dataset.imgs.keys()))}
         
@@ -35,7 +35,7 @@ class SemanticSegmentationCOCODataset(Dataset):
     def __getitem__(self, idx):
         # описание изображения в формате COCO
         coco_img = self.coco_dataset.imgs[self.idx_mapper[idx]]
-        image = Image.open(os.path.join(self.root_dir, coco_img['file_name']))
+        image = Image.open(os.path.join(self.img_dir, coco_img['file_name']))
 
         if (len(image.size) < 3) or (image.format != "JPEG"):
             image = image.convert('RGB')
@@ -51,7 +51,33 @@ class SemanticSegmentationCOCODataset(Dataset):
                 continue
             segmentation_map = np.maximum(segmentation_map, (ann_mask*ann['category_id']).astype(np_dtype))
         return self.preprocessor(image, segmentation_map)
-    
+
+
+class CarSegmentationDataset(Dataset):
+    def __init__(self, img_dir, ann_dir, preprocessor):
+        self.img_files = sorted([os.path.join(img_dir, f) for f in os.listdir(img_dir)])
+        self.ann_files = os.listdir(ann_dir)
+        self.ann_dir = ann_dir
+        self.preprocessor = preprocessor
+
+    def __len__(self):
+        return len(self.img_files)
+
+    def __getitem__(self, idx):
+        img_file_name = self.img_files[idx]
+        ann_file_name = img_file_name.split('/')[-1].split('.')[0] + '.png'
+        if ann_file_name not in self.ann_files:
+            raise FileNotFoundError(f'No ann file: {ann_file_name}')
+        else:
+            ann_file_name = os.path.join(self.ann_dir, ann_file_name)
+        # описание изображения в формате COCO
+        img = Image.open(img_file_name)
+        if (len(img.size) < 3) or (img.format != "JPEG"):
+            img = img.convert('RGB')
+        # img = Image.fromarray(np.repeat(np.expand_dims(cv2.cvtColor(np.array(x), cv2.COLOR_RGB2GRAY), axis=2), 3, axis=2))
+        segmentation_map = np.array(Image.open(ann_file_name))
+        segmentation_map[segmentation_map==255] = 1
+        return self.preprocessor(img, segmentation_map)
     
 
 class ConvNextPreprocessorNumpy:
@@ -59,7 +85,7 @@ class ConvNextPreprocessorNumpy:
     Similar to the ConvNextPreprocess but all operations are on Numpy.
     It's actuallt 2-3 times slower, than ConvNextPreprocess, which uses torch and numpy for augmentations
     '''
-    def __init__(self, size, aug=None, use_imagenet_norm=True):
+    def __init__(self, size, augmentator=None, use_imagenet_norm=True):
         self.aug = aug
         self.size = size
         # \_(^_^)_|
@@ -101,7 +127,12 @@ class ConvNextPreprocessorNumpy:
 
 class ConvNextPreprocessor:
     def __init__(self, size, augmentator=None, use_imagenet_norm=True):
-        self.augmentator = augmentator
+        def blank_aug(image, mask): return {'image': image, 'mask': mask}
+        
+        if augmentator is not None:
+            self.augmentator = augmentator
+        else:
+            self.augmentator = blank_aug
         if isinstance(self.augmentator, A.Compose):
             self.aug_backend = 'numpy'
         elif isinstance(self.augmentator, v2.Compose):
@@ -111,8 +142,8 @@ class ConvNextPreprocessor:
         self.size = size
         # ¯\_(ツ)_/¯
         if use_imagenet_norm:
-            self.mean = np.array(IMAGENET_MEAN).reshape(3,1,1)
-            self.std = np.array(IMAGENET_STD).reshape(3,1,1)
+            self.mean = torch.tensor(IMAGENET_MEAN, dtype=torch.float32).reshape(3,1,1)
+            self.std = torch.tensor(IMAGENET_STD, dtype=torch.float32).reshape(3,1,1)
             self.get_mean = lambda x: self.mean
             self.get_std = lambda x: self.std
         else:
@@ -130,7 +161,7 @@ class ConvNextPreprocessor:
             transformed = self.augmentator(image=img.permute(1,2,0).numpy(), mask=mask.numpy())
             img, mask = transformed['image'].transpose(2,0,1), transformed['mask']
         else:
-            transformed = self.augmentator(image=img, mask=mask.numpy())
+            transformed = self.augmentator(image=img, mask=mask)
             img, mask = transformed['image'], transformed['mask']
         return img, mask
     
@@ -138,11 +169,10 @@ class ConvNextPreprocessor:
         img = T.functional.to_tensor(img).unsqueeze(0)
         img = T.functional.resize(img, size=self.size, interpolation=T.InterpolationMode.BILINEAR, antialias=True).squeeze()
         img = (img - self.get_mean(img)) / self.get_std(img)
-
         return img
     
     def _preprocess_mask(self, mask):
-        mask = torch.tensor(mask).type(torch.int16)[None,None,:]
+        mask = torch.tensor(mask).type(torch.int32)[None,None,:]
         mask = T.functional.resize(mask, size=self.size, interpolation=T.InterpolationMode.NEAREST, antialias=True).squeeze()
         return mask
         
