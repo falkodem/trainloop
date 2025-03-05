@@ -95,7 +95,7 @@ class DiceLoss(torch.nn.Module):
         self.jaccard = jaccard
         self.smooth_nr = float(smooth_nr)
         self.smooth_dr = float(smooth_dr)
-        self.class_weight: None | torch.Tensor = torch.as_tensor(weight) if weight is not None else None
+        self.class_weight: Union[None, torch.Tensor] = torch.as_tensor(weight) if weight is not None else None
         self.reduction = reduction
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
