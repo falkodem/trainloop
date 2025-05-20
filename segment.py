@@ -81,16 +81,16 @@ def main(args):
     # ds_test = CarSegmentationDataset(f'./datasets/car_mask_from_elements/{subset}/images', f'./datasets/car_mask_from_elements/{subset}/anns', preprocessor_val)
 
     subset = 'train'
-    ds_train = SemanticSegmentationCOCODataset(f'../data/car_damage_small/{subset}',
-                                               f'../data/car_damage_small/{subset}/_annotations.coco.json',
+    ds_train = SemanticSegmentationCOCODataset(f'data/car_damage_small/{subset}',
+                                               f'data/car_damage_small/{subset}/_annotations.coco.json',
                                                preprocessor_train)
     subset = 'valid'
-    ds_val = SemanticSegmentationCOCODataset(f'../data/car_damage_small/{subset}',
-                                             f'../data/car_damage_small/{subset}/_annotations.coco.json',
+    ds_val = SemanticSegmentationCOCODataset(f'data/car_damage_small/{subset}',
+                                             f'data/car_damage_small/{subset}/_annotations.coco.json',
                                              preprocessor_val)
     subset = 'test'
-    ds_test = SemanticSegmentationCOCODataset(f'../data/car_damage_small/{subset}',
-                                              f'../data/car_damage_small/{subset}/_annotations.coco.json',
+    ds_test = SemanticSegmentationCOCODataset(f'data/car_damage_small/{subset}',
+                                              f'data/car_damage_small/{subset}/_annotations.coco.json',
                                               preprocessor_val)
     
     save_random_train_imgs(ds_train, os.path.join('runs', cfg['run_name']))
@@ -211,6 +211,7 @@ def main(args):
     
     def save_train_progression_callback(train_hist, val_hist, lr_hist, eval_strat, save_dir, **state):
         os.makedirs(save_dir, exist_ok=True)
+        print('-----', lr_hist[-1])
         f, ax = plt.subplots(1,3, figsize=(24,7))
         ax[0].plot(np.arange(len(train_hist)), train_hist)
         ax[0].set_title('Train Loss')
@@ -237,6 +238,7 @@ def main(args):
             scheduler=scheduler,
             n_epochs=cfg['train']['n_epochs'],
             device=device,
+            grad_accum_steps=cfg['train']['grad_accum_steps'],
             early_stop_rounds=cfg['train']['early_stop_rounds'],
             eval_strat=cfg['train']['eval_strat'],
             on_batch_validation_callbacks=[accum_iou_callback],

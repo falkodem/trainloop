@@ -1,4 +1,4 @@
-run_name: 'test_new_preds_focal_woutback'
+run_name: 'tmp'
 seg_model_type: 'UNetConvNext'
 convnext_model: 'convnextv2_femto'
 convnext_model_path: './models/convnextv2_femto.safetensors'
@@ -25,10 +25,11 @@ dataset:
     batch_size: 6
     workers: 4
 train:
-    n_epochs: 100
-    early_stop_rounds: 10
+    n_epochs: 20
+    early_stop_rounds: 5
     eval_strat: 'epoch'
     save_only_best: True
+    grad_accum_steps: 1
     optimizer:
         name: 'AdamW'
         params:

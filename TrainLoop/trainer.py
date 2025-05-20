@@ -3,7 +3,7 @@ from logging import Logger
 from typing import Union, Callable, List
 
 from tqdm import tqdm
-from torch.utils.data import Dataset, DataLoader
+from torch.amp import GradScaler, autocast
 import torch
 import numpy as np
 
@@ -25,6 +25,8 @@ class Trainer:
                 early_stop_rounds: Union[int, None] = None,
                 eval_strat: str = 'epoch',
                 loss_lesser_is_better: bool = True,
+                grad_accum_steps: int = 1,
+                max_grad_norm: Union[float, None] = None,
                 save_only_best: bool = False,
                 on_batch_validation_callbacks: List[Callable] = [],
                 end_of_iter_callbacks: List[Callable] = [],
@@ -53,6 +55,8 @@ class Trainer:
         self.early_stop_rounds = early_stop_rounds
         self.eval_strat = eval_strat
         self.loss_lesser_is_better = loss_lesser_is_better
+        self.grad_accum_steps = grad_accum_steps # 1 is default and leads to no accumulation
+        self.max_grad_norm = max_grad_norm # for gradient clipping 
         self.save_only_best = save_only_best
         self.on_batch_validation_callbacks = on_batch_validation_callbacks
         self.end_of_iter_callbacks = end_of_iter_callbacks
@@ -69,8 +73,9 @@ class Trainer:
                                                'lr_hist': self.lr_hist,
                                                'eval_strat': self.eval_strat}
 
-
+        self.scaler = GradScaler(self.device) if self.device != 'cpu' else None
         
+
     def _epoch_train_loop(self, dl_train: torch.utils.data.DataLoader, dl_val: torch.utils.data.DataLoader):
         os.makedirs(self.save_dir, exist_ok=True)
         best_val_loss = {'time': f'{self.iter_name}_0_batch_0', 'value': np.inf}
@@ -79,20 +84,31 @@ class Trainer:
         self.early_stop_cnt = 0
         
         with tqdm(total=self.n_iters, desc=f'{self.iter_name}: 0', leave=True) as pbar:
+
             for iteration in range(self.n_iters):
                 self.curr_iter = iteration
                 train_hist_iter = []
                 with tqdm(total=len(dl_train), desc=f'Batch: 0', leave=False) as inner_pbar:
                     for idx_batch, (X_train, y_train) in enumerate(dl_train):
-                        self.optimizer.zero_grad()
                         X_train, y_train = X_train.to(self.device), y_train.to(self.device)
                         self.model.train()
-                        pred = self.model(X_train)
-                        loss = self.loss_fn(pred, y_train)
-                        loss.backward()
 
-                        self.optimizer.step()
-                        train_hist_iter.append(loss.item())
+                        with autocast('cuda', dtype=torch.bfloat16):
+                            pred = self.model(X_train)
+                            loss = self.loss_fn(pred, y_train)
+                        self.scaler.scale(loss / self.grad_accum_steps).backward()
+                        if (idx_batch + 1) % self.grad_accum_steps == 0 or (idx_batch + 1) == len(dl_train):
+                            # Gradient Clipping
+                            if self.max_grad_norm is not None:
+                                self.scaler.unscale_(self.optimizer)
+                                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
+                            
+                            # Обновляем веса и сбрасываем градиенты
+                            self.scaler.step(self.optimizer)
+                            self.scaler.update()
+                            self.optimizer.zero_grad()
+
+                            train_hist_iter.append(loss.item())
                         
                         inner_pbar.update(1)
                         inner_pbar.set_description(f'Batch: {idx_batch}')
@@ -212,7 +228,7 @@ class Trainer:
                 model_save_name = f'best.pt'
             else:
                 model_save_name = f'best_{self.iter_name}_{iteration}_batch_{idx_batch}.pt'
-            torch.save(self.model, f'{self.save_dir}/{model_save_name}')
+            torch.save(self.model.state_dict(), f'{self.save_dir}/{model_save_name}')
             self.early_stop_cnt = 0
         else:
             self.early_stop_cnt += 1

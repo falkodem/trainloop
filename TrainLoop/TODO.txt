@@ -1,5 +1,6 @@
 1. Еще стратегии обучения
     1. Masked Image Modelling (как fully convolutional masked autoencoder framework в convnext_v2) претрейн
-2. Добавить загрузку через state_dict
 3. Добавить сохранение параметро, оптимизатора и препроцессора
 4. Добавить примеры-фоны
+5. LR warmup через scheduler
+6. Ema?
