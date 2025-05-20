@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 from archs.unet import UNetConvNext, UNetEffNet
 from archs.convnext_seg import ConvNextSeg
-from TrainLoop.data import ConvNextPreprocessor, SemanticSegmentationCOCODataset, CarSegmentationDataset
+from TrainLoop.dataset.semantic_seg import ConvNextPreprocessor, SemanticSegmentationCOCODataset, CarSegmentationDataset
 
 def infer_and_visualize(model, ds, id2label, id2color, i_img, thr, reduced_labels):
     img_path = os.path.join(ds.img_dir, ds.coco_dataset.imgs[ds.idx_mapper[i_img]]['file_name'])

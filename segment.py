@@ -19,7 +19,7 @@ import cv2
 from TrainLoop.trainer import Trainer
 from archs.unet import UNetConvNext, UNetEffNet
 from archs.convnext_seg import ConvNextSeg
-from TrainLoop.data import SemanticSegmentationCOCODataset, ConvNextPreprocessor, ConvNextPreprocessorNumpy, CarSegmentationDataset
+from TrainLoop.dataset.semantic_seg import SemanticSegmentationCOCODataset, ConvNextPreprocessor, ConvNextPreprocessorNumpy, CarSegmentationDataset
 from TrainLoop.utils import one_hot_labels
 from TrainLoop.metrics import MeanIOU
 from TrainLoop.loss import DiceLoss
