@@ -211,7 +211,6 @@ def main(args):
     
     def save_train_progression_callback(train_hist, val_hist, lr_hist, eval_strat, save_dir, **state):
         os.makedirs(save_dir, exist_ok=True)
-        print('-----', lr_hist[-1])
         f, ax = plt.subplots(1,3, figsize=(24,7))
         ax[0].plot(np.arange(len(train_hist)), train_hist)
         ax[0].set_title('Train Loss')
@@ -239,6 +238,7 @@ def main(args):
             n_epochs=cfg['train']['n_epochs'],
             device=device,
             grad_accum_steps=cfg['train']['grad_accum_steps'],
+            max_grad_norm=cfg['train']['max_grad_norm'],
             early_stop_rounds=cfg['train']['early_stop_rounds'],
             eval_strat=cfg['train']['eval_strat'],
             on_batch_validation_callbacks=[accum_iou_callback],

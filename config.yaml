@@ -30,6 +30,7 @@ train:
     eval_strat: 'epoch'
     save_only_best: True
     grad_accum_steps: 1
+    max_grad_norm: 1
     optimizer:
         name: 'AdamW'
         params:
