@@ -86,7 +86,7 @@ class ConvNextPreprocessorNumpy:
     It's actuallt 2-3 times slower, than ConvNextPreprocess, which uses torch and numpy for augmentations
     '''
     def __init__(self, size, augmentator=None, use_imagenet_norm=True):
-        self.aug = aug
+        self.aug = augmentator
         self.size = size
         # \_(^_^)_|
         if use_imagenet_norm:
