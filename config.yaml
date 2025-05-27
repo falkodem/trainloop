@@ -1,25 +1,25 @@
 run_name: 'tmp'
 seg_model_type: 'UNetConvNext'
-convnext_model: 'convnextv2_femto'
-convnext_model_path: './models/convnextv2_femto.safetensors'
+# convnext_model: 'convnextv2_femto'
+# convnext_model_path: './models/convnextv2_femto.safetensors'
 aug:
     crop_size:
     - 600
     - 600
     rotate:
         angles:
-        - -30
-        - 30
+        - -10
+        - 10
     brightness_contrast:
         p: 0.2
     perspective:
         scale:
-        - 0.003
-        - 0.003
+        - 0.002
+        - 0.002
 preprocessor:
     size:
     - 768
-    - 768
+    - 1380
     use_imagenet_norm: True
 dataset:
     batch_size: 6

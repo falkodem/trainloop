@@ -89,7 +89,6 @@ class InstanceSegDETR(Dataset):
 
         ann_ids = self.coco_dataset.getAnnIds(imgIds=coco_img_id, catIds=self.cat_ids, iscrowd=None)
         anns = self.coco_dataset.loadAnns(ann_ids)
-
         # Create a binary mask with shape: n_instances x height x width. Fill each channel with binary mask
         instance_map = np.zeros((len(anns), coco_img['height'], coco_img['width']), dtype=np.uint8)
         for i_instance, ann in enumerate(anns):
@@ -110,7 +109,7 @@ class InstanceSegDETR(Dataset):
         data = self.preprocessor(image, target)
 
         # model.detr.model.backbone (что является классом DetrConvModel) поменять на другое свое
-        return image, target
+        return data
 
     def __len__(self):
         return len(self.coco_dataset.imgs)
@@ -124,50 +123,63 @@ class DetrPreprocessor:
         if use_imagenet_norm:
             self._imagenet_mean = torch.tensor(IMAGENET_MEAN, dtype=torch.float32).reshape(3,1,1)
             self._imagenet_std = torch.tensor(IMAGENET_STD, dtype=torch.float32).reshape(3,1,1)
-
-    def __call__(self, images: list[PIL.Image], targets: Union[list[dict], None]=None):
-        images = [T.functional.to_tensor(image).unsqueeze(0) for image in images]
-        if targets is not None:
-            for target in targets:
-                target['masks'] = torch.tensor(target['masks'], dtype=torch.uint8)
+        if isinstance(self.augmentator, A.Compose):
+            self.aug_backend = 'numpy'
         else:
-            targets = [None]*len(images)
+            self.aug_backend = 'torch'
+
+    def __call__(self, image: PIL.Image, target: Union[dict, None]=None):
+        image = T.functional.to_tensor(image)
+        if target is not None:
+            target['masks'] = torch.tensor(target['masks'], dtype=torch.uint8)
+            target['boxes'] = torch.tensor(target['boxes'], dtype=torch.float32)
+        else:
+            target = None
+        # Resize with padding, augment
+        image, mask, boxes = self.resize_keeping_aspect_ratio(image,
+                                            target['masks'] if target else target,
+                                            target['boxes'] if target else target)
+        image = (image - self._get_mean(image)) / self._get_std(image)
+        image, pixel_mask, mask = self.pad_to_required_size(image, mask)
         
-        # Resize with padding, augment. Loop is updating both images and targets
-        pixel_masks = []
-        for i, (image, target) in enumerate(zip(images, targets)):
-            image, mask = self.resize_keeping_aspect_ratio(image, target['masks'] if target else target)
-            image = (image - self._get_mean(image)) / self._get_std(image)
-            image, pixel_mask, mask = self.pad_to_required_size(image, mask)
-            
-            if self.augmentator: # БОКСЫ ТОЖЕ БЛЯ
-                image, pixel_mask_and_seg_mask = self.augmentator(image, torch.concatenate(pixel_mask.unsqueeze(0), mask))
-                pixel_mask, mask = pixel_mask_and_seg_mask[0], pixel_mask_and_seg_mask[1:]
-                pixel_masks.append(pixel_mask)
-                del pixel_mask_and_seg_mask
-            
-            images[i] = image
-            target['masks'] = mask
-            target['boxes'] = boxes
+        if self.augmentator:
+            image, pixel_mask_and_seg_mask, boxes = self.augment(image,
+                                                        torch.concatenate([pixel_mask.unsqueeze(0), mask]),
+                                                        boxes)
+            pixel_mask, mask = pixel_mask_and_seg_mask[0], pixel_mask_and_seg_mask[1:]
+            del pixel_mask_and_seg_mask
 
         processed_data = {}
-        processed_data['pixel_values'] = images
-        processed_data['pixel_masks'] = pixel_masks
-        if targets is not None:
+        processed_data['pixel_values'] = image
+        processed_data['pixel_masks'] = pixel_mask
+        if target is not None:
+            target['masks'] = mask
+            target['boxes'] = boxes
             processed_data['labels'] = target
 
         return processed_data
 
-    def augment(self, img: torch.tensor, mask: torch.tensor):
+    def augment(self, img: torch.tensor, mask: torch.tensor, boxes: Union[torch.tensor, None]=None):
         if self.aug_backend == 'numpy':
-            transformed = self.augmentator(image=img.permute(1,2,0).numpy(), mask=mask.numpy())
-            img, mask = transformed['image'].transpose(2,0,1), transformed['mask']
+            args = {
+                'image': img.permute(1, 2, 0).numpy(),
+                'mask': mask.permute(1, 2, 0).numpy()
+            }
+            if boxes is not None:
+                args['bboxes'] = boxes.numpy()
+
+            transformed = self.augmentator(**args)
+            img = transformed['image'].transpose(2, 0, 1)
+            mask = transformed['mask'].transpose(2, 0, 1)
+            boxes = transformed.get('bboxes', boxes)
+
         else:
+            # TODO: adapt for boxes as above
             transformed = self.augmentator(image=img, mask=mask)
             img, mask = transformed['image'], transformed['mask']
-        return img, mask
+        return img, mask, boxes
     
-    def resize_keeping_aspect_ratio(self, img, mask=None):
+    def resize_keeping_aspect_ratio(self, img, mask=None, boxes=None):
         orig_h, orig_w = img.shape[-2:]
         target_h , target_w = self.size
         ratio_h, ratio_w = target_h /orig_h, target_w / orig_w
@@ -193,12 +205,23 @@ class DetrPreprocessor:
                 mode='bilinear', 
                 align_corners=False
             ).squeeze(0)
+        else:
+            mask_resized = None
 
-        if mask is not None:
-            return img_resized, mask_resized
-        return img_resized
+        # Adjust bounding boxes according to resize
+        if boxes is not None:
+            scale_w = new_w / orig_w
+            scale_h = new_h / orig_h
+            boxes_resized = boxes.clone()
+            boxes_resized[:, [0, 2]] = boxes[:, [0, 2]] * scale_w  # x1, x2
+            boxes_resized[:, [1, 3]] = boxes[:, [1, 3]] * scale_h  # y1, y2
+        else:
+            boxes_resized = None
+
+        return img_resized, mask_resized, boxes_resized
 
     def pad_to_required_size(self, image, mask):
+        # BBoxes are not needed to be processed here, since we pad bottom and right
         new_h, new_w = self.size
         orig_h, orig_w = image.shape[-2:]
         pad_bottom = new_h - orig_h
@@ -207,10 +230,11 @@ class DetrPreprocessor:
 
         img_padded = F.pad(image, padding, mode='constant', value=0)
 
+
         # Create binary mask (1 for image, 0 for padding)
-        pixel_mask = torch.ones((new_h, new_w), dtype=torch.float32)
+        pixel_mask = torch.ones((orig_h, orig_w), dtype=torch.float32)
         pixel_mask = F.pad(pixel_mask, padding, mode='constant', value=0)
-        
+
         if mask is not None:
             mask_padded = F.pad(mask, padding, mode='constant', value=0)
         else:
