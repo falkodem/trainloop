@@ -4,3 +4,7 @@ runs/
 run/
 *.csv
 data/
+*.py
+*.ipynb
+*.txt
+*.yaml

@@ -96,14 +96,14 @@ class InstanceSegDETR(Dataset):
             instance_map[i_instance] = ann_mask
 
         target = {
-            "image_id": coco_img_id,
-            "masks": instance_map,
-            "class_labels": np.asarray([ann['category_id'] for ann in anns], dtype=np.int64),
-            "size": np.asarray([coco_img['height'], coco_img['width']], dtype=np.int64),
-            "orig_size": np.asarray([coco_img['height'], coco_img['width']], dtype=np.int64),
-            "boxes": np.asarray([ann['bbox'] for ann in anns], dtype=np.float32),
-            "iscrowd": np.asarray([ann.get('iscrowd', 0) for ann in anns], dtype=np.int64),
-            "area": np.asarray([ann.get('area', 0) for ann in anns], dtype=np.float32),
+            "image_id": torch.tensor(coco_img_id, dtype=torch.int64),
+            "masks": torch.tensor(instance_map, dtype=torch.uint8),
+            "class_labels": torch.tensor([ann['category_id'] for ann in anns], dtype=torch.int64),
+            "size": torch.tensor([coco_img['height'], coco_img['width']], dtype=torch.int64),
+            "orig_size": torch.tensor([coco_img['height'], coco_img['width']], dtype=torch.int64),
+            "boxes": torch.tensor([ann['bbox'] for ann in anns], dtype=torch.float32),
+            "iscrowd": torch.tensor([ann.get('iscrowd', 0) for ann in anns], dtype=torch.int64),
+            "area": torch.tensor([ann.get('area', 0) for ann in anns], dtype=torch.float32),
         }
         # Here is resize, augmentations, etc.
         data = self.preprocessor(image, target)
@@ -130,11 +130,7 @@ class DetrPreprocessor:
 
     def __call__(self, image: PIL.Image, target: Union[dict, None]=None):
         image = T.functional.to_tensor(image)
-        if target is not None:
-            target['masks'] = torch.tensor(target['masks'], dtype=torch.uint8)
-            target['boxes'] = torch.tensor(target['boxes'], dtype=torch.float32)
-        else:
-            target = None
+
         # Resize with padding, augment
         image, mask, boxes = self.resize_keeping_aspect_ratio(image,
                                             target['masks'] if target else target,
@@ -151,7 +147,7 @@ class DetrPreprocessor:
 
         processed_data = {}
         processed_data['pixel_values'] = image
-        processed_data['pixel_masks'] = pixel_mask
+        processed_data['pixel_mask'] = pixel_mask
         if target is not None:
             target['masks'] = mask
             target['boxes'] = boxes
@@ -198,7 +194,7 @@ class DetrPreprocessor:
         ).squeeze(0)
         
         if mask is not None:
-        # Resize the mask
+            # Resize the mask
             mask_resized = F.interpolate(
                 mask.unsqueeze(0), 
                 size=(new_h, new_w), 
@@ -212,7 +208,7 @@ class DetrPreprocessor:
         if boxes is not None:
             scale_w = new_w / orig_w
             scale_h = new_h / orig_h
-            boxes_resized = boxes.clone()
+            boxes_resized = boxes
             boxes_resized[:, [0, 2]] = boxes[:, [0, 2]] * scale_w  # x1, x2
             boxes_resized[:, [1, 3]] = boxes[:, [1, 3]] * scale_h  # y1, y2
         else:

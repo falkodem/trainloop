@@ -20,9 +20,9 @@ from TrainLoop.trainer import Trainer
 from archs.unet import UNetConvNext, UNetEffNet
 from archs.convnext_seg import ConvNextSeg
 from TrainLoop.dataset.semantic_seg import SemanticSegmentationCOCODataset, ConvNextPreprocessor, ConvNextPreprocessorNumpy, CarSegmentationDataset
-from TrainLoop.utils import one_hot_labels
+from TrainLoop.aux.utils import one_hot_labels
 from TrainLoop.metrics import MeanIOU
-from TrainLoop.loss import DiceLoss
+from TrainLoop.loss.loss import DiceLoss
 
 optimizer_mapping = {'AdamW': torch.optim.AdamW}
 scheduler_mapping = {'ExponentialLR': torch.optim.lr_scheduler.ExponentialLR,
@@ -39,10 +39,11 @@ def save_random_train_imgs(ds, save_path):
     f, ax = plt.subplots(4,4, figsize=(12,7))
     random_idxs = np.random.choice(np.arange(len(ds)), 16, replace=False)
     for i, idx in enumerate(random_idxs):
-        img = np.array(ds[idx][0]).transpose(1,2,0)
+        data = ds[idx]
+        img = np.array(data[0]).transpose(1,2,0)
         img = img + np.abs(img.min(axis=(0,1)))
         img = img * (255 / img.max(axis=(0,1)))
-        ann = np.array(ds[idx][1])
+        ann = np.array(data[1])
         ann = ann * (255 / ann.max())
         res = (img*0.3).astype(np.uint8) + (np.repeat(np.expand_dims(ann, axis=2), 3, axis=2)*0.7).astype(np.uint8)
         ax[i//4, i%4].imshow(res)
@@ -181,7 +182,8 @@ def main(args):
     # ---------- Evaluator settings ----------
     mean_iou = MeanIOU(num_labels=len(id2label), mode='accum', reduce_labels=False)
     
-    def accum_iou_callback(preds, labels):
+    def accum_iou_callback(preds, val_batch):
+        labels = val_batch[1]
         # preds = nn.functional.interpolate(preds.detach(),
         #         size=labels.shape[1:], # (height, width),
         #         mode='bilinear',

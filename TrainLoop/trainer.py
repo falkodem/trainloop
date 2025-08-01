@@ -30,6 +30,8 @@ class Trainer:
                 save_only_best: bool = False,
                 on_batch_validation_callbacks: List[Callable] = [],
                 end_of_iter_callbacks: List[Callable] = [],
+                custom_train_batch_fn: Union[Callable, None] = None,
+                custom_eval_batch_fn: Union[Callable, None] = None,
                 ):
         self.device = device
         self.model = model.to(self.device)
@@ -60,6 +62,8 @@ class Trainer:
         self.save_only_best = save_only_best
         self.on_batch_validation_callbacks = on_batch_validation_callbacks
         self.end_of_iter_callbacks = end_of_iter_callbacks
+        self.train_batch = custom_train_batch_fn if custom_train_batch_fn is not None else self.train_batch
+        self.eval_batch = custom_eval_batch_fn if custom_eval_batch_fn is not None else self.eval_batch
         
         self.train_hist = []
         self.val_hist = []
@@ -74,7 +78,20 @@ class Trainer:
                                                'eval_strat': self.eval_strat}
 
         self.scaler = GradScaler(self.device) if self.device != 'cpu' else None
-        
+    
+    def train_batch(self, batch, model):
+        X_train, y_train = batch
+        X_train, y_train = X_train.to(self.device), y_train.to(self.device)
+        pred = model(X_train)
+        loss = self.loss_fn(pred, y_train)
+        return {'loss': loss}
+
+    def eval_batch(self, batch, model):
+        X_val, y_val = batch
+        X_val, y_val = X_val.to(self.device), y_val.to(self.device)
+        pred = model(X_val)
+        loss = self.loss_fn(pred, y_val)
+        return {'loss': loss, 'pred': pred}
 
     def _epoch_train_loop(self, dl_train: torch.utils.data.DataLoader, dl_val: torch.utils.data.DataLoader):
         os.makedirs(self.save_dir, exist_ok=True)
@@ -89,13 +106,13 @@ class Trainer:
                 self.curr_iter = iteration
                 train_hist_iter = []
                 with tqdm(total=len(dl_train), desc=f'Batch: 0', leave=False) as inner_pbar:
-                    for idx_batch, (X_train, y_train) in enumerate(dl_train):
-                        X_train, y_train = X_train.to(self.device), y_train.to(self.device)
+                    for idx_batch, train_data in enumerate(dl_train):
                         self.model.train()
 
                         with autocast('cuda', dtype=torch.bfloat16):
-                            pred = self.model(X_train)
-                            loss = self.loss_fn(pred, y_train)
+                            train_batch_res = self.train_batch(train_data, self.model, self.device) # Here we run model, get preds and compute loss
+                            loss = train_batch_res['loss']
+
                         self.scaler.scale(loss / self.grad_accum_steps).backward()
                         if (idx_batch + 1) % self.grad_accum_steps == 0 or (idx_batch + 1) == len(dl_train):
                             # Gradient Clipping
@@ -130,6 +147,7 @@ class Trainer:
     
     
     def _steps_train_loop(self,  dl_train: torch.utils.data.DataLoader, dl_val: torch.utils.data.DataLoader):
+        raise NotImplementedError('Steps training loop is not implemented yet. Need to do amp support for it.')
         os.makedirs(self.save_dir, exist_ok=True)
         best_val_loss = {'time': f'{self.iter_name}_0_batch_0', 'value': np.inf}
         
@@ -199,19 +217,16 @@ class Trainer:
     def validate(self, dl_val):
         self.model.eval()
         val_hist_batch = []
-        pred_hist_batch = []
         with torch.no_grad():
-            for X_val, y_val in dl_val:
-                X_val, y_val = X_val.to(self.device), y_val.to(self.device)
-                pred = self.model(X_val)
-                
-                loss = self.loss_fn(pred, y_val)
+            for val_data in dl_val:
+                eval_batch_res = self.eval_batch(val_data, self.model, self.device)
+                loss = eval_batch_res['loss']
+                pred = eval_batch_res['pred']
                 
                 for cb in self.on_batch_validation_callbacks:
-                    cb(pred, y_val)
+                    cb(pred, val_data)
                 
                 val_hist_batch.append(loss.item())
-                pred_hist_batch.append(pred)
         val_loss = sum(val_hist_batch) / (len(dl_val) * dl_val.batch_size)     
         return val_loss
 
