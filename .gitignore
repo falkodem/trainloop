@@ -2,9 +2,6 @@ __pycache__/
 models/
 runs/
 run/
-*.csv
 data/
-*.py
-*.ipynb
-*.txt
-*.yaml
+scripts/
+*.csv
