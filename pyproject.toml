@@ -13,7 +13,11 @@ dependencies = [
     "segmentation-models-pytorch (==0.4.0)",
     "torchvision (==0.20.1)",
     "timm (==1.0.11)",
-    "opencv-python (>=4.12.0.88,<5.0.0.0)"
+    "opencv-python (>=4.12.0.88,<5.0.0.0)",
+    "albumentations (>=2.0.8,<3.0.0)",
+    "matplotlib (>=3.10.5,<4.0.0)",
+    "joblib (>=1.5.1,<2.0.0)",
+    "pycocotools (>=2.0.10,<3.0.0)"
 ]
 
 

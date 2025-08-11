@@ -70,13 +70,12 @@ class Trainer:
         self.lr_hist = []
         self.curr_iter = 0
         
-        self.end_of_iter_allowed_properties = {'save_dir': self.save_dir,
-                                               'curr_iter': self.curr_iter,
-                                               'train_hist': self.train_hist,
-                                               'val_hist': self.val_hist,
-                                               'lr_hist': self.lr_hist,
-                                               'eval_strat': self.eval_strat}
-
+        self.end_of_iter_allowed_properties = ('save_dir',
+                                               'curr_iter',
+                                               'train_hist',
+                                               'val_hist',
+                                               'lr_hist',
+                                               'eval_strat')
         self.scaler = GradScaler(self.device) if self.device != 'cpu' else None
     
     def train_batch(self, batch, model):
@@ -110,7 +109,7 @@ class Trainer:
                         self.model.train()
 
                         with autocast('cuda', dtype=torch.bfloat16):
-                            train_batch_res = self.train_batch(train_data, self.model, self.device) # Here we run model, get preds and compute loss
+                            train_batch_res = self.train_batch(train_data, self.model) # Here we run model, get preds and compute loss
                             loss = train_batch_res['loss']
 
                         self.scaler.scale(loss / self.grad_accum_steps).backward()
@@ -209,7 +208,7 @@ class Trainer:
             self.scheduler.step()
             self.lr_hist.append(self.scheduler.get_last_lr())
         for cb in self.end_of_iter_callbacks:
-            cb(**self.end_of_iter_allowed_properties)
+            cb(**{prop: getattr(self, prop) for prop in self.end_of_iter_allowed_properties})
             
         return best_val_loss
 
@@ -219,7 +218,7 @@ class Trainer:
         val_hist_batch = []
         with torch.no_grad():
             for val_data in dl_val:
-                eval_batch_res = self.eval_batch(val_data, self.model, self.device)
+                eval_batch_res = self.eval_batch(val_data, self.model)
                 loss = eval_batch_res['loss']
                 pred = eval_batch_res['pred']
                 
@@ -240,11 +239,13 @@ class Trainer:
             best_loss['value'] = curr_loss
             best_loss['time'] = f'{self.iter_name}_{iteration}_batch_{idx_batch}'
             if self.save_only_best:
-                model_save_name = f'best.pt'
+                model_save_name = f'best.pth'
             else:
-                model_save_name = f'best_{self.iter_name}_{iteration}_batch_{idx_batch}.pt'
-            torch.save(self.model.state_dict(), f'{self.save_dir}/{model_save_name}')
+                model_save_name = f'best_{self.iter_name}_{iteration}_batch_{idx_batch}.pth'
+            torch.save(self.model.to('cpu').state_dict(), f'{self.save_dir}/{model_save_name}')
+            self.model.to(self.device)
             self.early_stop_cnt = 0
         else:
             self.early_stop_cnt += 1
         return best_loss
+    

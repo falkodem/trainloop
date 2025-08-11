@@ -16,13 +16,13 @@ from PIL import Image
 import albumentations as A
 import cv2
 
-from TrainLoop.trainer import Trainer
+from trainloop.trainer import Trainer
 from archs.unet import UNetConvNext, UNetEffNet
 from archs.convnext_seg import ConvNextSeg
-from TrainLoop.dataset.semantic_seg import SemanticSegmentationCOCODataset, ConvNextPreprocessor, ConvNextPreprocessorNumpy, CarSegmentationDataset
-from TrainLoop.aux.utils import one_hot_labels
-from TrainLoop.metrics import MeanIOU
-from TrainLoop.loss.loss import DiceLoss
+from trainloop.dataset.semantic_seg import SemanticSegmentationCOCODataset, ConvNextPreprocessor, ConvNextPreprocessorNumpy, CarSegmentationDataset
+from trainloop.aux.utils import one_hot_labels
+from trainloop.metrics import MeanIOU
+from trainloop.loss.loss import DiceLoss
 
 optimizer_mapping = {'AdamW': torch.optim.AdamW}
 scheduler_mapping = {'ExponentialLR': torch.optim.lr_scheduler.ExponentialLR,

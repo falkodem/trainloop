@@ -6,7 +6,7 @@ def total_intersect_and_union(
     results,
     gt_seg_maps,
     num_labels,
-    ignore_index: bool,
+    ignore_index: int,
     label_map: Optional[Dict[int, int]] = None,
     reduce_labels: bool = False,
 ):
@@ -55,7 +55,7 @@ def intersect_and_union(
     pred_label,
     label,
     num_labels,
-    ignore_index: bool,
+    ignore_index: int,
     label_map: Optional[Dict[int, int]] = None,
     reduce_labels: bool = False,
 ):

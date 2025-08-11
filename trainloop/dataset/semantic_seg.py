@@ -15,7 +15,7 @@ torch_dtype = torch.float16
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
 
-class SemanticSegmentationCOCODataset(Dataset):
+class SemSegCOCODataset(Dataset):
     """Image (semantic) segmentation dataset.
     Draws data from COCO-style dataset
     Images and annotations should be places in the same direcotry with name specified by "img_dir" parameter
@@ -125,7 +125,7 @@ class ConvNextPreprocessorNumpy:
         return np.std(x, axis=(1,2)).reshape(3,1,1)
 
 
-class ConvNextPreprocessor:
+class SemSegPreprocessor:
     def __init__(self, size, augmentator=None, use_imagenet_norm=True):
         def blank_aug(image, mask): return {'image': image, 'mask': mask}
         
@@ -154,12 +154,14 @@ class ConvNextPreprocessor:
         img = self._preprocess_image(img)
         mask = self._preprocess_mask(mask)
         img, mask = self.augment(img, mask)
+        img = (img - self.get_mean(img)) / self.get_std(img)
+
         return img, mask
         
     def augment(self, img: torch.tensor, mask: torch.tensor):
         if self.aug_backend == 'numpy':
             transformed = self.augmentator(image=img.permute(1,2,0).numpy(), mask=mask.numpy())
-            img, mask = transformed['image'].transpose(2,0,1), transformed['mask']
+            img, mask = torch.from_numpy(transformed['image'].transpose(2,0,1)), torch.from_numpy(transformed['mask'])
         else:
             transformed = self.augmentator(image=img, mask=mask)
             img, mask = transformed['image'], transformed['mask']
@@ -168,7 +170,6 @@ class ConvNextPreprocessor:
     def _preprocess_image(self, img):
         img = T.functional.to_tensor(img).unsqueeze(0)
         img = T.functional.resize(img, size=self.size, interpolation=T.InterpolationMode.BILINEAR, antialias=True).squeeze()
-        img = (img - self.get_mean(img)) / self.get_std(img)
         return img
     
     def _preprocess_mask(self, mask):
